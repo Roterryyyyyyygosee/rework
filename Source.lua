@@ -1,5 +1,5 @@
--- Linoria-style UI Library for Roblox
--- By: YourNameHere
+-- Linoria-inspired UI Library for Roblox
+-- Fixed and improved version
 
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
@@ -11,35 +11,20 @@ local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 
-local Library = {
-    Windows = {},
-    Dragging = nil,
-    Resizing = nil,
-    Open = true,
-    Theme = {},
-    Flags = {},
-    ConfigFolder = "UI_Library_Configs",
-    Notifications = {}
-}
-
 -- Utility functions
-local function Create(className, properties)
-    local instance = Instance.new(className)
+local function Create(instanceType, properties)
+    local instance = Instance.new(instanceType)
     for property, value in pairs(properties) do
         instance[property] = value
     end
     return instance
 end
 
-local function Tween(instance, properties, duration, ...)
-    local tweenInfo = TweenInfo.new(duration, ...)
+local function Tween(instance, properties, duration, easingStyle, easingDirection)
+    local tweenInfo = TweenInfo.new(duration or 0.2, easingStyle or Enum.EasingStyle.Quad, easingDirection or Enum.EasingDirection.Out)
     local tween = TweenService:Create(instance, tweenInfo, properties)
     tween:Play()
     return tween
-end
-
-local function MapValue(value, inMin, inMax, outMin, outMax)
-    return (value - inMin) * (outMax - outMin) / (inMax - inMin) + outMin
 end
 
 local function Round(number, decimalPlaces)
@@ -48,69 +33,22 @@ local function Round(number, decimalPlaces)
     return math.floor(number * multiplier + 0.5) / multiplier
 end
 
-local function FormatNumber(number)
-    if number >= 1000000 then
-        return string.format("%.1fM", number / 1000000)
-    elseif number >= 1000 then
-        return string.format("%.1fK", number / 1000)
-    else
-        return tostring(number)
-    end
+local function MapValue(value, inMin, inMax, outMin, outMax)
+    return (value - inMin) * (outMax - outMin) / (inMax - inMin) + outMin
 end
 
--- Color conversion functions
-local function RGBToHSV(r, g, b)
-    r, g, b = r / 255, g / 255, b / 255
-    local max, min = math.max(r, g, b), math.min(r, g, b)
-    local h, s, v
-    v = max
-
-    local d = max - min
-    s = max == 0 and 0 or d / max
-
-    if max == min then
-        h = 0
-    else
-        if max == r then
-            h = (g - b) / d + (g < b and 6 or 0)
-        elseif max == g then
-            h = (b - r) / d + 2
-        elseif max == b then
-            h = (r - g) / d + 4
-        end
-        h = h / 6
-    end
-
-    return h, s, v
-end
-
-local function HSVToRGB(h, s, v)
-    local r, g, b
-
-    local i = math.floor(h * 6)
-    local f = h * 6 - i
-    local p = v * (1 - s)
-    local q = v * (1 - f * s)
-    local t = v * (1 - (1 - f) * s)
-
-    i = i % 6
-
-    if i == 0 then
-        r, g, b = v, t, p
-    elseif i == 1 then
-        r, g, b = q, v, p
-    elseif i == 2 then
-        r, g, b = p, v, t
-    elseif i == 3 then
-        r, g, b = p, q, v
-    elseif i == 4 then
-        r, g, b = t, p, v
-    elseif i == 5 then
-        r, g, b = v, p, q
-    end
-
-    return r * 255, g * 255, b * 255
-end
+-- Main Library Table
+local Library = {
+    Windows = {},
+    Dragging = nil,
+    Resizing = nil,
+    Open = true,
+    Theme = {},
+    Flags = {},
+    ConfigFolder = "UI_Library_Configs",
+    Notifications = {},
+    ScreenGui = nil
+}
 
 -- Default theme
 Library.DefaultTheme = {
@@ -130,14 +68,14 @@ for key, value in pairs(Library.DefaultTheme) do
     Library.Theme[key] = value
 end
 
--- Main screen GUI
+-- Create main screen GUI
 Library.ScreenGui = Create("ScreenGui", {
     Name = "UILibrary",
     Parent = CoreGui,
-    ZIndexBehavior = Enum.ZIndexBehavior.Global
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 })
 
--- Notification handler
+-- Notification system
 function Library:SendNotification(title, content, duration)
     duration = duration or 5
     
@@ -228,86 +166,6 @@ function Library:LoadConfig(name)
     end
     
     return self:SendNotification("Config Loaded", "Config '" .. name .. "' has been loaded.", 3)
-end
-
-function Library:GetConfigs()
-    if not isfolder(self.ConfigFolder) then
-        return {}
-    end
-    
-    local files = listfiles(self.ConfigFolder)
-    local configs = {}
-    
-    for _, file in ipairs(files) do
-        if string.sub(file, -5) == ".json" then
-            table.insert(configs, string.match(file, "([^/]+)%.json$"))
-        end
-    end
-    
-    return configs
-end
-
--- Theme system
-function Library:SaveTheme(name)
-    local themes = self:GetThemes()
-    themes[name] = self.Theme
-    
-    local json = HttpService:JSONEncode(themes)
-    
-    if not isfolder(self.ConfigFolder) then
-        makefolder(self.ConfigFolder)
-    end
-    
-    writefile(self.ConfigFolder .. "/themes.json", json)
-    
-    return self:SendNotification("Theme Saved", "Theme '" .. name .. "' has been saved.", 3)
-end
-
-function Library:LoadTheme(name)
-    if not isfolder(self.ConfigFolder) then
-        return self:SendNotification("Error", "Config folder not found.", 3)
-    end
-    
-    local success, result = pcall(function()
-        return readfile(self.ConfigFolder .. "/themes.json")
-    end)
-    
-    if not success then
-        return self:SendNotification("Error", "Themes file not found.", 3)
-    end
-    
-    local themes = HttpService:JSONDecode(result)
-    
-    if not themes[name] then
-        return self:SendNotification("Error", "Theme '" .. name .. "' not found.", 3)
-    end
-    
-    for key, value in pairs(themes[name]) do
-        self.Theme[key] = Color3.new(value.R, value.G, value.B)
-    end
-    
-    -- Update all UI elements with new theme
-    for _, window in ipairs(self.Windows) do
-        window:UpdateTheme()
-    end
-    
-    return self:SendNotification("Theme Loaded", "Theme '" .. name .. "' has been loaded.", 3)
-end
-
-function Library:GetThemes()
-    if not isfolder(self.ConfigFolder) then
-        return {}
-    end
-    
-    local success, result = pcall(function()
-        return readfile(self.ConfigFolder .. "/themes.json")
-    end)
-    
-    if not success then
-        return {}
-    end
-    
-    return HttpService:JSONDecode(result) or {}
 end
 
 -- Window class
@@ -663,7 +521,6 @@ function Toggle.new(section, name, default, flag, callback)
     local self = setmetatable(Element.new(section, name, flag, callback), Toggle)
     
     self.Value = default or false
-    self.Toggled = self.Value
     
     if flag then
         Library.Flags[flag] = self.Value
@@ -705,7 +562,7 @@ function Toggle.new(section, name, default, flag, callback)
         ZIndex = 4
     })
     
-    self.ToggleCorner = Create("UICorner", {
+    Create("UICorner", {
         Parent = self.ToggleFrame,
         CornerRadius = UDim.new(0, 7)
     })
@@ -721,7 +578,7 @@ function Toggle.new(section, name, default, flag, callback)
         ZIndex = 5
     })
     
-    self.ButtonCorner = Create("UICorner", {
+    Create("UICorner", {
         Parent = self.ToggleButton,
         CornerRadius = UDim.new(0, 5)
     })
@@ -843,7 +700,7 @@ function Slider.new(section, name, min, max, default, flag, callback, options)
         ZIndex = 4
     })
     
-    self.TrackCorner = Create("UICorner", {
+    Create("UICorner", {
         Parent = self.Track,
         CornerRadius = UDim.new(0, 2)
     })
@@ -859,7 +716,7 @@ function Slider.new(section, name, min, max, default, flag, callback, options)
         ZIndex = 5
     })
     
-    self.FillCorner = Create("UICorner", {
+    Create("UICorner", {
         Parent = self.Fill,
         CornerRadius = UDim.new(0, 2)
     })
@@ -876,7 +733,7 @@ function Slider.new(section, name, min, max, default, flag, callback, options)
         ZIndex = 6
     })
     
-    self.ButtonCorner = Create("UICorner", {
+    Create("UICorner", {
         Parent = self.Button,
         CornerRadius = UDim.new(0, 7)
     })
@@ -988,7 +845,7 @@ function Button.new(section, name, callback)
         ZIndex = 4
     })
     
-    self.ButtonCorner = Create("UICorner", {
+    Create("UICorner", {
         Parent = self.Button,
         CornerRadius = UDim.new(0, 4)
     })
@@ -1058,7 +915,7 @@ function Dropdown.new(section, name, options, default, flag, callback)
         ZIndex = 4
     })
     
-    self.ButtonCorner = Create("UICorner", {
+    Create("UICorner", {
         Parent = self.Button,
         CornerRadius = UDim.new(0, 4)
     })
@@ -1090,7 +947,7 @@ function Dropdown.new(section, name, options, default, flag, callback)
         ZIndex = 6
     })
     
-    self.OptionsCorner = Create("UICorner", {
+    Create("UICorner", {
         Parent = self.OptionsContainer,
         CornerRadius = UDim.new(0, 4)
     })
@@ -1123,7 +980,7 @@ function Dropdown.new(section, name, options, default, flag, callback)
             ZIndex = 7
         })
         
-        optionButton.Padding = Create("UIPadding", {
+        Create("UIPadding", {
             Parent = optionButton,
             PaddingLeft = UDim.new(0, 10)
         })
@@ -1199,320 +1056,6 @@ function Dropdown:UpdateFlag()
     end
 end
 
--- MultiDropdown element
-local MultiDropdown = setmetatable({}, Dropdown)
-MultiDropdown.__index = MultiDropdown
-
-function MultiDropdown.new(section, name, options, default, flag, callback)
-    default = default or {}
-    local self = setmetatable(Element.new(section, name, flag, callback), MultiDropdown)
-    
-    self.Options = options or {}
-    self.Value = {}
-    self.Open = false
-    
-    -- Set default values
-    for _, option in ipairs(default) do
-        if table.find(self.Options, option) then
-            table.insert(self.Value, option)
-        end
-    end
-    
-    if flag then
-        Library.Flags[flag] = self.Value
-    end
-    
-    -- Create container (same as Dropdown)
-    self.Container = Create("Frame", {
-        Name = name .. "MultiDropdown",
-        Parent = section.Container,
-        Size = UDim2.new(1, 0, 0, 30),
-        BackgroundTransparency = 1,
-        LayoutOrder = #section.Elements + 1,
-        ZIndex = 3
-    })
-    
-    -- Dropdown button
-    self.Button = Create("TextButton", {
-        Name = "Button",
-        Parent = self.Container,
-        Size = UDim2.new(1, 0, 0, 30),
-        BackgroundColor3 = Library.Theme.Foreground,
-        BorderSizePixel = 0,
-        Text = self:GetText(),
-        TextColor3 = Library.Theme.TextColor,
-        Font = Enum.Font.Gotham,
-        TextSize = 12,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 4
-    })
-    
-    self.ButtonCorner = Create("UICorner", {
-        Parent = self.Button,
-        CornerRadius = UDim.new(0, 4)
-    })
-    
-    self.Button.Padding = Create("UIPadding", {
-        Parent = self.Button,
-        PaddingLeft = UDim.new(0, 10)
-    })
-    
-    -- Dropdown arrow
-    self.Arrow = Create("TextLabel", {
-        Name = "Arrow",
-        Parent = self.Button,
-        Size = UDim2.new(0, 20, 0, 20),
-        Position = UDim2.new(1, -25, 0.5, -10),
-        BackgroundTransparency = 1,
-        Text = "▼",
-        TextColor3 = Library.Theme.TextColor,
-        Font = Enum.Font.Gotham,
-        TextSize = 12,
-        ZIndex = 5
-    })
-    
-    -- Options container
-    self.OptionsContainer = Create("Frame", {
-        Name = "OptionsContainer",
-        Parent = self.Container,
-        Size = UDim2.new(1, 0, 0, 0),
-        Position = UDim2.new(0, 0, 0, 35),
-        BackgroundColor3 = Library.Theme.Foreground,
-        BorderSizePixel = 0,
-        ClipsDescendants = true,
-        Visible = false,
-        ZIndex = 6
-    })
-    
-    self.OptionsCorner = Create("UICorner", {
-        Parent = self.OptionsContainer,
-        CornerRadius = UDim.new(0, 4)
-    })
-    
-    self.OptionsLayout = Create("UIListLayout", {
-        Parent = self.OptionsContainer,
-        SortOrder = Enum.SortOrder.LayoutOrder
-    })
-    
-    self.OptionsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        if self.Open then
-            self.OptionsContainer.Size = UDim2.new(1, 0, 0, self.OptionsLayout.AbsoluteContentSize.Y)
-        end
-    end)
-    
-    -- Create option buttons with checkboxes
-    for i, option in ipairs(self.Options) do
-        local optionFrame = Create("Frame", {
-            Name = option .. "Option",
-            Parent = self.OptionsContainer,
-            Size = UDim2.new(1, 0, 0, 25),
-            BackgroundTransparency = 1,
-            LayoutOrder = i,
-            ZIndex = 7
-        })
-        
-        local optionButton = Create("TextButton", {
-            Name = "Button",
-            Parent = optionFrame,
-            Size = UDim2.new(1, 0, 1, 0),
-            BackgroundTransparency = 1,
-            Text = "",
-            ZIndex = 8
-        })
-        
-        local optionText = Create("TextLabel", {
-            Name = "Text",
-            Parent = optionFrame,
-            Size = UDim2.new(1, -30, 1, 0),
-            Position = UDim2.new(0, 30, 0, 0),
-            BackgroundTransparency = 1,
-            Text = tostring(option),
-            TextColor3 = Library.Theme.TextColor,
-            Font = Enum.Font.Gotham,
-            TextSize = 12,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            ZIndex = 8
-        })
-        
-        local checkbox = Create("Frame", {
-            Name = "Checkbox",
-            Parent = optionFrame,
-            Size = UDim2.new(0, 15, 0, 15),
-            Position = UDim2.new(0, 10, 0.5, -7.5),
-            BackgroundColor3 = Library.Theme.Foreground,
-            BorderSizePixel = 0,
-            ZIndex = 8
-        })
-        
-        local checkboxCorner = Create("UICorner", {
-            Parent = checkbox,
-            CornerRadius = UDim.new(0, 2)
-        })
-        
-        local checkmark = Create("TextLabel", {
-            Name = "Checkmark",
-            Parent = checkbox,
-            Size = UDim2.new(1, 0, 1, 0),
-            BackgroundTransparency = 1,
-            Text = "✓",
-            TextColor3 = Library.Theme.TextColor,
-            Font = Enum.Font.Gotham,
-            TextSize = 12,
-            Visible = false,
-            ZIndex = 9
-        })
-        
-        -- Set initial state
-        if table.find(self.Value, option) then
-            checkmark.Visible = true
-            checkbox.BackgroundColor3 = Library.Theme.Accent
-        end
-        
-        -- Click event
-        optionButton.MouseButton1Click:Connect(function()
-            self:ToggleOption(option)
-            
-            if table.find(self.Value, option) then
-                checkmark.Visible = true
-                Tween(checkbox, {BackgroundColor3 = Library.Theme.Accent}, 0.2)
-            else
-                checkmark.Visible = false
-                Tween(checkbox, {BackgroundColor3 = Library.Theme.Foreground}, 0.2)
-            end
-        end)
-        
-        -- Hover effects
-        optionButton.MouseEnter:Connect(function()
-            Tween(optionText, {TextColor3 = Library.Theme.Accent}, 0.2)
-        end)
-        
-        optionButton.MouseLeave:Connect(function()
-            Tween(optionText, {TextColor3 = Library.Theme.TextColor}, 0.2)
-        end)
-    end
-    
-    -- Toggle event
-    self.Button.MouseButton1Click:Connect(function()
-        self:Toggle()
-    end)
-    
-    table.insert(section.Elements, self)
-    return self
-end
-
-function MultiDropdown:GetText()
-    if #self.Value == 0 then
-        return self.Name .. ": None"
-    elseif #self.Value == 1 then
-        return self.Name .. ": " .. tostring(self.Value[1])
-    else
-        return self.Name .. ": " .. tostring(#self.Value) .. " selected"
-    end
-end
-
-function MultiDropdown:ToggleOption(option)
-    if table.find(self.Value, option) then
-        table.remove(self.Value, table.find(self.Value, option))
-    else
-        table.insert(self.Value, option)
-    end
-    
-    self.Button.Text = self:GetText()
-    
-    if self.Flag then
-        Library.Flags[self.Flag] = self.Value
-    end
-    
-    if self.Callback then
-        self.Callback(self.Value)
-    end
-end
-
-function MultiDropdown:Toggle()
-    self.Open = not self.Open
-    
-    if self.Open then
-        self.OptionsContainer.Visible = true
-        self.OptionsContainer.Size = UDim2.new(1, 0, 0, self.OptionsLayout.AbsoluteContentSize.Y)
-        Tween(self.Arrow, {Rotation = 180}, 0.2)
-    else
-        self.OptionsContainer.Size = UDim2.new(1, 0, 0, 0)
-        wait(0.2)
-        self.OptionsContainer.Visible = false
-        Tween(self.Arrow, {Rotation = 0}, 0.2)
-    end
-end
-
-function MultiDropdown:SetValue(values, silent)
-    self.Value = values or {}
-    self.Button.Text = self:GetText()
-    
-    if self.Flag then
-        Library.Flags[self.Flag] = self.Value
-    end
-    
-    -- Update checkboxes
-    for _, optionFrame in ipairs(self.OptionsContainer:GetChildren()) do
-        if optionFrame:IsA("Frame") and optionFrame.Name ~= "UIListLayout" then
-            local option = string.gsub(optionFrame.Name, "Option", "")
-            local checkbox = optionFrame:FindFirstChild("Checkbox")
-            local checkmark = checkbox and checkbox:FindFirstChild("Checkmark")
-            
-            if checkbox and checkmark then
-                if table.find(self.Value, option) then
-                    checkmark.Visible = true
-                    checkbox.BackgroundColor3 = Library.Theme.Accent
-                else
-                    checkmark.Visible = false
-                    checkbox.BackgroundColor3 = Library.Theme.Foreground
-                end
-            end
-        end
-    end
-    
-    if not silent and self.Callback then
-        self.Callback(self.Value)
-    end
-end
-
-function MultiDropdown:UpdateTheme()
-    self.Button.BackgroundColor3 = Library.Theme.Foreground
-    self.Button.TextColor3 = Library.Theme.TextColor
-    self.Arrow.TextColor3 = Library.Theme.TextColor
-    self.OptionsContainer.BackgroundColor3 = Library.Theme.Foreground
-    
-    for _, optionFrame in ipairs(self.OptionsContainer:GetChildren()) do
-        if optionFrame:IsA("Frame") and optionFrame.Name ~= "UIListLayout" then
-            local optionText = optionFrame:FindFirstChild("Text")
-            local checkbox = optionFrame:FindFirstChild("Checkbox")
-            local checkmark = checkbox and checkbox:FindFirstChild("Checkmark")
-            
-            if optionText then
-                optionText.TextColor3 = Library.Theme.TextColor
-            end
-            
-            if checkbox then
-                local option = string.gsub(optionFrame.Name, "Option", "")
-                if table.find(self.Value, option) then
-                    checkbox.BackgroundColor3 = Library.Theme.Accent
-                else
-                    checkbox.BackgroundColor3 = Library.Theme.Foreground
-                end
-            end
-            
-            if checkmark then
-                checkmark.TextColor3 = Library.Theme.TextColor
-            end
-        end
-    end
-end
-
-function MultiDropdown:UpdateFlag()
-    if self.Flag and Library.Flags[self.Flag] ~= nil then
-        self:SetValue(Library.Flags[self.Flag], true)
-    end
-end
-
 -- Keybind element
 local Keybind = setmetatable({}, Element)
 Keybind.__index = Keybind
@@ -1569,7 +1112,7 @@ function Keybind.new(section, name, default, flag, callback, options)
         ZIndex = 4
     })
     
-    self.ButtonCorner = Create("UICorner", {
+    Create("UICorner", {
         Parent = self.Button,
         CornerRadius = UDim.new(0, 4)
     })
@@ -1712,12 +1255,12 @@ function Textbox.new(section, name, default, flag, callback, options)
         ZIndex = 4
     })
     
-    self.BoxCorner = Create("UICorner", {
+    Create("UICorner", {
         Parent = self.Box,
         CornerRadius = UDim.new(0, 4)
     })
     
-    self.Box.Padding = Create("UIPadding", {
+    Create("UIPadding", {
         Parent = self.Box,
         PaddingLeft = UDim.new(0, 5),
         PaddingRight = UDim.new(0, 5)
@@ -1806,540 +1349,6 @@ function Label:UpdateTheme()
     self.TextLabel.TextColor3 = Library.Theme.TextColor
 end
 
--- ColorPicker element
-local ColorPicker = setmetatable({}, Element)
-ColorPicker.__index = ColorPicker
-
-function ColorPicker.new(section, name, default, flag, callback)
-    local self = setmetatable(Element.new(section, name, flag, callback), ColorPicker)
-    
-    self.Value = default or Color3.fromRGB(255, 255, 255)
-    self.Open = false
-    
-    if flag then
-        Library.Flags[flag] = self.Value
-    end
-    
-    -- Create container
-    self.Container = Create("Frame", {
-        Name = name .. "ColorPicker",
-        Parent = section.Container,
-        Size = UDim2.new(1, 0, 0, 30),
-        BackgroundTransparency = 1,
-        LayoutOrder = #section.Elements + 1,
-        ZIndex = 3
-    })
-    
-    -- ColorPicker label
-    self.Label = Create("TextLabel", {
-        Name = "Label",
-        Parent = self.Container,
-        Size = UDim2.new(1, -50, 1, 0),
-        Position = UDim2.new(0, 0, 0, 0),
-        BackgroundTransparency = 1,
-        Text = name,
-        TextColor3 = Library.Theme.TextColor,
-        Font = Enum.Font.Gotham,
-        TextSize = 12,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 4
-    })
-    
-    -- Color preview
-    self.Preview = Create("TextButton", {
-        Name = "Preview",
-        Parent = self.Container,
-        Size = UDim2.new(0, 40, 0, 20),
-        Position = UDim2.new(1, -40, 0.5, -10),
-        BackgroundColor3 = self.Value,
-        BorderSizePixel = 0,
-        Text = "",
-        ZIndex = 4
-    })
-    
-    self.PreviewCorner = Create("UICorner", {
-        Parent = self.Preview,
-        CornerRadius = UDim.new(0, 4)
-    })
-    
-    -- Picker container
-    self.PickerContainer = Create("Frame", {
-        Name = "PickerContainer",
-        Parent = self.Container,
-        Size = UDim2.new(0, 200, 0, 0),
-        Position = UDim2.new(0, 0, 0, 35),
-        BackgroundColor3 = Library.Theme.Foreground,
-        BorderSizePixel = 0,
-        ClipsDescendants = true,
-        Visible = false,
-        ZIndex = 6
-    })
-    
-    self.PickerCorner = Create("UICorner", {
-        Parent = self.PickerContainer,
-        CornerRadius = UDim.new(0, 4)
-    })
-    
-    -- Hue slider
-    self.HueSlider = Create("Frame", {
-        Name = "HueSlider",
-        Parent = self.PickerContainer,
-        Size = UDim2.new(0, 15, 0, 150),
-        Position = UDim2.new(1, -20, 0, 10),
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-        BorderSizePixel = 0,
-        ZIndex = 7
-    })
-    
-    self.HueSliderCorner = Create("UICorner", {
-        Parent = self.HueSlider,
-        CornerRadius = UDim.new(0, 4)
-    })
-    
-    -- Hue gradient
-    local hueGradient = Create("UIGradient", {
-        Parent = self.HueSlider,
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
-            ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 255, 0)),
-            ColorSequenceKeypoint.new(0.33, Color3.fromRGB(0, 255, 0)),
-            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0, 255, 255)),
-            ColorSequenceKeypoint.new(0.67, Color3.fromRGB(0, 0, 255)),
-            ColorSequenceKeypoint.new(0.83, Color3.fromRGB(255, 0, 255)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0))
-        }),
-        Rotation = 90
-    })
-    
-    -- Hue selector
-    self.HueSelector = Create("Frame", {
-        Name = "HueSelector",
-        Parent = self.HueSlider,
-        Size = UDim2.new(1, 0, 0, 2),
-        Position = UDim2.new(0, 0, 0, 0),
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-        BorderSizePixel = 0,
-        ZIndex = 8
-    })
-    
-    -- Saturation/Brightness area
-    self.SatBrightArea = Create("ImageButton", {
-        Name = "SatBrightArea",
-        Parent = self.PickerContainer,
-        Size = UDim2.new(0, 150, 0, 150),
-        Position = UDim2.new(0, 10, 0, 10),
-        BackgroundColor3 = Color3.fromRGB(255, 0, 0),
-        BorderSizePixel = 0,
-        AutoButtonColor = false,
-        ZIndex = 7
-    })
-    
-    self.SatBrightAreaCorner = Create("UICorner", {
-        Parent = self.SatBrightArea,
-        CornerRadius = UDim.new(0, 4)
-    })
-    
-    -- Saturation gradient
-    local satGradient = Create("UIGradient", {
-        Parent = self.SatBrightArea,
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0))
-        }),
-        Rotation = 0
-    })
-    
-    -- Brightness gradient
-    local brightGradient = Create("UIGradient", {
-        Parent = self.SatBrightArea,
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 0, 0)),
-            ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1))
-        }),
-        Rotation = 90,
-        Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 0),
-            NumberSequenceKeypoint.new(1, 0.5)
-        })
-    })
-    
-    -- Sat/Bright selector
-    self.SatBrightSelector = Create("Frame", {
-        Name = "SatBrightSelector",
-        Parent = self.SatBrightArea,
-        Size = UDim2.new(0, 6, 0, 6),
-        Position = UDim2.new(0, 0, 0, 0),
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-        BorderColor3 = Color3.fromRGB(0, 0, 0),
-        ZIndex = 8
-    })
-    
-    self.SelectorCorner = Create("UICorner", {
-        Parent = self.SatBrightSelector,
-        CornerRadius = UDim.new(0, 3)
-    })
-    
-    -- RGB inputs
-    self.RInput = Create("TextBox", {
-        Name = "RInput",
-        Parent = self.PickerContainer,
-        Size = UDim2.new(0, 40, 0, 20),
-        Position = UDim2.new(0, 10, 0, 170),
-        BackgroundColor3 = Library.Theme.LightContrast,
-        BorderSizePixel = 0,
-        Text = tostring(math.floor(self.Value.R * 255)),
-        TextColor3 = Library.Theme.TextColor,
-        Font = Enum.Font.Gotham,
-        TextSize = 12,
-        ZIndex = 7
-    })
-    
-    self.RInputCorner = Create("UICorner", {
-        Parent = self.RInput,
-        CornerRadius = UDim.new(0, 4)
-    })
-    
-    self.RInput.Padding = Create("UIPadding", {
-        Parent = self.RInput,
-        PaddingLeft = UDim.new(0, 5)
-    })
-    
-    self.GInput = Create("TextBox", {
-        Name = "GInput",
-        Parent = self.PickerContainer,
-        Size = UDim2.new(0, 40, 0, 20),
-        Position = UDim2.new(0, 60, 0, 170),
-        BackgroundColor3 = Library.Theme.LightContrast,
-        BorderSizePixel = 0,
-        Text = tostring(math.floor(self.Value.G * 255)),
-        TextColor3 = Library.Theme.TextColor,
-        Font = Enum.Font.Gotham,
-        TextSize = 12,
-        ZIndex = 7
-    })
-    
-    self.GInputCorner = Create("UICorner", {
-        Parent = self.GInput,
-        CornerRadius = UDim.new(0, 4)
-    })
-    
-    self.GInput.Padding = Create("UIPadding", {
-        Parent = self.GInput,
-        PaddingLeft = UDim.new(0, 5)
-    })
-    
-    self.BInput = Create("TextBox", {
-        Name = "BInput",
-        Parent = self.PickerContainer,
-        Size = UDim2.new(0, 40, 0, 20),
-        Position = UDim2.new(0, 110, 0, 170),
-        BackgroundColor3 = Library.Theme.LightContrast,
-        BorderSizePixel = 0,
-        Text = tostring(math.floor(self.Value.B * 255)),
-        TextColor3 = Library.Theme.TextColor,
-        Font = Enum.Font.Gotham,
-        TextSize = 12,
-        ZIndex = 7
-    })
-    
-    self.BInputCorner = Create("UICorner", {
-        Parent = self.BInput,
-        CornerRadius = UDim.new(0, 4)
-    })
-    
-    self.BInput.Padding = Create("UIPadding", {
-        Parent = self.BInput,
-        PaddingLeft = UDim.new(0, 5)
-    })
-    
-    -- Hex input
-    self.HexInput = Create("TextBox", {
-        Name = "HexInput",
-        Parent = self.PickerContainer,
-        Size = UDim2.new(0, 60, 0, 20),
-        Position = UDim2.new(0, 10, 0, 200),
-        BackgroundColor3 = Library.Theme.LightContrast,
-        BorderSizePixel = 0,
-        Text = self:RGBToHex(self.Value),
-        TextColor3 = Library.Theme.TextColor,
-        Font = Enum.Font.Gotham,
-        TextSize = 12,
-        ZIndex = 7
-    })
-    
-    self.HexInputCorner = Create("UICorner", {
-        Parent = self.HexInput,
-        CornerRadius = UDim.new(0, 4)
-    })
-    
-    self.HexInput.Padding = Create("UIPadding", {
-        Parent = self.HexInput,
-        PaddingLeft = UDim.new(0, 5)
-    })
-    
-    -- Set initial HSV values
-    local h, s, v = RGBToHSV(self.Value.R * 255, self.Value.G * 255, self.Value.B * 255)
-    self.Hue = h
-    self.Saturation = s
-    self.ValueValue = v
-    
-    -- Update selector positions
-    self.HueSelector.Position = UDim2.new(0, 0, self.Hue, -1)
-    self.SatBrightSelector.Position = UDim2.new(self.Saturation, -3, 1 - self.ValueValue, -3)
-    
-    -- Toggle event
-    self.Preview.MouseButton1Click:Connect(function()
-        self:Toggle()
-    end)
-    
-    -- Hue slider events
-    local hueDragging = false
-    
-    self.HueSlider.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            hueDragging = true
-            
-            local connection
-            connection = RunService.RenderStepped:Connect(function()
-                if not hueDragging then
-                    connection:Disconnect()
-                    return
-                end
-                
-                local mousePos = UserInputService:GetMouseLocation()
-                local sliderPos = self.HueSlider.AbsolutePosition
-                local sliderSize = self.HueSlider.AbsoluteSize
-                
-                local relativeY = math.clamp(mousePos.Y - sliderPos.Y, 0, sliderSize.Y)
-                local hue = relativeY / sliderSize.Y
-                
-                self:SetHue(hue)
-            end)
-        end
-    end)
-    
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            hueDragging = false
-        end
-    end)
-    
-    -- Sat/Bright area events
-    local satBrightDragging = false
-    
-    self.SatBrightArea.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            satBrightDragging = true
-            
-            local connection
-            connection = RunService.RenderStepped:Connect(function()
-                if not satBrightDragging then
-                    connection:Disconnect()
-                    return
-                end
-                
-                local mousePos = UserInputService:GetMouseLocation()
-                local areaPos = self.SatBrightArea.AbsolutePosition
-                local areaSize = self.SatBrightArea.AbsoluteSize
-                
-                local relativeX = math.clamp(mousePos.X - areaPos.X, 0, areaSize.X)
-                local relativeY = math.clamp(mousePos.Y - areaPos.Y, 0, areaSize.Y)
-                
-                local sat = relativeX / areaSize.X
-                local val = 1 - (relativeY / areaSize.Y)
-                
-                self:SetSaturationAndValue(sat, val)
-            end)
-        end
-    end)
-    
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            satBrightDragging = false
-        end
-    end)
-    
-    -- RGB input events
-    self.RInput.FocusLost:Connect(function()
-        local r = tonumber(self.RInput.Text) or 0
-        r = math.clamp(r, 0, 255)
-        self.RInput.Text = tostring(r)
-        
-        local g = tonumber(self.GInput.Text) or 0
-        local b = tonumber(self.BInput.Text) or 0
-        
-        self:SetRGB(r, g, b)
-    end)
-    
-    self.GInput.FocusLost:Connect(function()
-        local g = tonumber(self.GInput.Text) or 0
-        g = math.clamp(g, 0, 255)
-        self.GInput.Text = tostring(g)
-        
-        local r = tonumber(self.RInput.Text) or 0
-        local b = tonumber(self.BInput.Text) or 0
-        
-        self:SetRGB(r, g, b)
-    end)
-    
-    self.BInput.FocusLost:Connect(function()
-        local b = tonumber(self.BInput.Text) or 0
-        b = math.clamp(b, 0, 255)
-        self.BInput.Text = tostring(b)
-        
-        local r = tonumber(self.RInput.Text) or 0
-        local g = tonumber(self.GInput.Text) or 0
-        
-        self:SetRGB(r, g, b)
-    end)
-    
-    -- Hex input event
-    self.HexInput.FocusLost:Connect(function()
-        local hex = self.HexInput.Text
-        if string.sub(hex, 1, 1) == "#" then
-            hex = string.sub(hex, 2)
-        end
-        
-        if #hex == 6 then
-            local r = tonumber("0x" .. string.sub(hex, 1, 2))
-            local g = tonumber("0x" .. string.sub(hex, 3, 4))
-            local b = tonumber("0x" .. string.sub(hex, 5, 6))
-            
-            if r and g and b then
-                self:SetRGB(r, g, b)
-            end
-        end
-    end)
-    
-    table.insert(section.Elements, self)
-    return self
-end
-
-function ColorPicker:RGBToHex(color)
-    local r = math.floor(color.R * 255)
-    local g = math.floor(color.G * 255)
-    local b = math.floor(color.B * 255)
-    return string.format("#%02X%02X%02X", r, g, b)
-end
-
-function ColorPicker:SetHue(hue)
-    self.Hue = hue
-    self.HueSelector.Position = UDim2.new(0, 0, hue, -1)
-    
-    local r, g, b = HSVToRGB(hue, self.Saturation, self.ValueValue)
-    self.SatBrightArea.BackgroundColor3 = Color3.fromRGB(r, g, b)
-    
-    self:UpdateColor()
-end
-
-function ColorPicker:SetSaturationAndValue(sat, val)
-    self.Saturation = sat
-    self.ValueValue = val
-    self.SatBrightSelector.Position = UDim2.new(sat, -3, 1 - val, -3)
-    
-    self:UpdateColor()
-end
-
-function ColorPicker:SetRGB(r, g, b)
-    local h, s, v = RGBToHSV(r, g, b)
-    self.Hue = h
-    self.Saturation = s
-    self.ValueValue = v
-    
-    self.HueSelector.Position = UDim2.new(0, 0, h, -1)
-    self.SatBrightSelector.Position = UDim2.new(s, -3, 1 - v, -3)
-    self.SatBrightArea.BackgroundColor3 = Color3.fromRGB(r, g, b)
-    
-    self:UpdateColor()
-end
-
-function ColorPicker:UpdateColor()
-    local r, g, b = HSVToRGB(self.Hue, self.Saturation, self.ValueValue)
-    self.Value = Color3.fromRGB(r, g, b)
-    self.Preview.BackgroundColor3 = self.Value
-    
-    -- Update RGB inputs
-    self.RInput.Text = tostring(math.floor(r))
-    self.GInput.Text = tostring(math.floor(g))
-    self.BInput.Text = tostring(math.floor(b))
-    
-    -- Update hex input
-    self.HexInput.Text = self:RGBToHex(self.Value)
-    
-    if self.Flag then
-        Library.Flags[self.Flag] = self.Value
-    end
-    
-    if self.Callback then
-        self.Callback(self.Value)
-    end
-end
-
-function ColorPicker:Toggle()
-    self.Open = not self.Open
-    
-    if self.Open then
-        self.PickerContainer.Visible = true
-        self.PickerContainer.Size = UDim2.new(0, 200, 0, 230)
-    else
-        self.PickerContainer.Size = UDim2.new(0, 200, 0, 0)
-        wait(0.2)
-        self.PickerContainer.Visible = false
-    end
-end
-
-function ColorPicker:SetValue(value, silent)
-    self.Value = value
-    self.Preview.BackgroundColor3 = value
-    
-    local r = math.floor(value.R * 255)
-    local g = math.floor(value.G * 255)
-    local b = math.floor(value.B * 255)
-    
-    local h, s, v = RGBToHSV(r, g, b)
-    self.Hue = h
-    self.Saturation = s
-    self.ValueValue = v
-    
-    if self.Open then
-        self.HueSelector.Position = UDim2.new(0, 0, h, -1)
-        self.SatBrightSelector.Position = UDim2.new(s, -3, 1 - v, -3)
-        self.SatBrightArea.BackgroundColor3 = value
-        
-        self.RInput.Text = tostring(r)
-        self.GInput.Text = tostring(g)
-        self.BInput.Text = tostring(b)
-        self.HexInput.Text = self:RGBToHex(value)
-    end
-    
-    if self.Flag then
-        Library.Flags[self.Flag] = self.Value
-    end
-    
-    if not silent and self.Callback then
-        self.Callback(self.Value)
-    end
-end
-
-function ColorPicker:UpdateTheme()
-    self.Label.TextColor3 = Library.Theme.TextColor
-    self.PickerContainer.BackgroundColor3 = Library.Theme.Foreground
-    self.RInput.BackgroundColor3 = Library.Theme.LightContrast
-    self.RInput.TextColor3 = Library.Theme.TextColor
-    self.GInput.BackgroundColor3 = Library.Theme.LightContrast
-    self.GInput.TextColor3 = Library.Theme.TextColor
-    self.BInput.BackgroundColor3 = Library.Theme.LightContrast
-    self.BInput.TextColor3 = Library.Theme.TextColor
-    self.HexInput.BackgroundColor3 = Library.Theme.LightContrast
-    self.HexInput.TextColor3 = Library.Theme.TextColor
-end
-
-function ColorPicker:UpdateFlag()
-    if self.Flag and Library.Flags[self.Flag] ~= nil then
-        self:SetValue(Library.Flags[self.Flag], true)
-    end
-end
-
 -- Input handling for dragging and resizing
 UserInputService.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement then
@@ -2387,10 +1396,6 @@ function Window:AddDropdown(section, name, options, default, flag, callback)
     return Dropdown.new(section, name, options, default, flag, callback)
 end
 
-function Window:AddMultiDropdown(section, name, options, default, flag, callback)
-    return MultiDropdown.new(section, name, options, default, flag, callback)
-end
-
 function Window:AddKeybind(section, name, default, flag, callback, options)
     return Keybind.new(section, name, default, flag, callback, options)
 end
@@ -2401,10 +1406,6 @@ end
 
 function Window:AddLabel(section, text)
     return Label.new(section, text)
-end
-
-function Window:AddColorPicker(section, name, default, flag, callback)
-    return ColorPicker.new(section, name, default, flag, callback)
 end
 
 -- Library functions
@@ -2419,10 +1420,6 @@ function Library:Unload()
     
     if self.NotificationHandler then
         self.NotificationHandler:Disconnect()
-    end
-    
-    for _, connection in ipairs(self.Connections or {}) do
-        connection:Disconnect()
     end
     
     self.Windows = {}
