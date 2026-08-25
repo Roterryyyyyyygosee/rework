@@ -16,8 +16,9 @@
         local NumSeq = NumberSequence.new;
         local NumKey = NumberSequenceKeypoint.new;
 
-        local Format, Spawn, Clear, Floor, Clamp, Abs, Tan, Rad, Huge, Remove = string.format, task.spawn, table.clear, math.floor, math.clamp, math.abs, math.tan, math.rad, math.huge, table.remove;
-        local ZeroVector3, CameraPosition, FocalLength, ViewPortY = NewVector3(0,0,0), NewVector3(0,0,0), 0, 0;
+        local Format, Clear, Floor, Clamp, Abs, Tan, Rad, Huge, Remove = string.format, table.clear, math.floor, math.clamp, math.abs, math.tan, math.rad, math.huge, table.remove;
+        local ZeroVector3, CameraPosition, ViewPortY = NewVector3(0,0,0), NewVector3(0,0,0), 0;
+        local CachedFocalLength = 0;
 
         local function CameraCache()
             ViewPortY = Camera.ViewportSize.Y;
@@ -26,10 +27,7 @@
 
         CameraCache();
 
-        Camera:GetPropertyChangedSignal("FieldOfView"):Connect(CameraCache);
-        Camera:GetPropertyChangedSignal("ViewportSize"):Connect(CameraCache);
-
-getgenv().Library = {
+local Library = {
 	['Directory'] = 'Esp',
 	['Cache'] = {},
 	['Holder'] = nil,
@@ -104,7 +102,11 @@ getgenv().Library = {
 		},
 	}
 }
+getgenv().Library = Library
         local Table = Library['Table'];
+
+        Library.Connections['CameraFieldOfView'] = Camera:GetPropertyChangedSignal("FieldOfView"):Connect(CameraCache);
+        Library.Connections['CameraViewportSize'] = Camera:GetPropertyChangedSignal("ViewportSize"):Connect(CameraCache);
 
         local Fonts = {}; do
             local function FontsRegister(Name, Weight, Style, Asset)
@@ -835,8 +837,8 @@ getgenv().Library = {
                 local ScrMaxX, ScrMaxY = -Huge, -Huge;
                 local HasValidParts = false;
 
-                for _, Part in Children do
-                    if Part:IsA('BasePart') and Part.Transparency ~= 1 and Part ~= RootPart then
+                for _, Part in Data['Parts'] do
+                    if Part.Transparency ~= 1 and Part ~= RootPart then
                         local Parent = Part.Parent
 
                         if Parent == nil then
@@ -908,6 +910,7 @@ getgenv().Library = {
                 ['RootPart'] = nil,
                 ['Humanoid'] = nil,
                 ['Children'] = nil,
+                ['Parts'] = nil,
                 ['Health'] = 0,
                 ['MaxHealth'] = 100,
                 ['Armor'] = 100,
@@ -939,6 +942,7 @@ getgenv().Library = {
                 ['LastHealthMid'] = nil,
                 ['LastHealthBot'] = nil,
                 ['LastHealthFloor'] = nil,
+                ['LastHealthTextRatio'] = nil,
                 ['LastRatio'] = nil,
                 ['LastArmorTop'] = nil,
                 ['LastArmorMid'] = nil,
@@ -1005,7 +1009,7 @@ getgenv().Library = {
                     end)
 
                     Data['Conns']['ToolRemoved'] = Character.ChildRemoved:Connect(function(Child)
-                        if Child:IsA('Tool') then
+                        if Child:IsA('Tool') and Data['CurrentTool'] == Child.Name then
                             Data['CurrentTool'] = nil
                         end
                     end)
@@ -1025,10 +1029,23 @@ getgenv().Library = {
                     end;
 
                     local Children = Character:GetChildren();
+                    local Parts = {};
+
+                    for _, Child in Children do
+                        if Child:IsA('BasePart') then
+                            Parts[#Parts + 1] = Child;
+                        end
+                    end
+
                     Data['Children'] = Children;
+                    Data['Parts'] = Parts;
 
                     Data['Conns']['ChildAdded'] = Character.ChildAdded:Connect(function(Child)
                         Children[#Children + 1] = Child;
+
+                        if Child:IsA('BasePart') then
+                            Parts[#Parts + 1] = Child;
+                        end
                     end)
 
                     Data['Conns']['ChildRemoved'] = Character.ChildRemoved:Connect(function(Child)
@@ -1037,6 +1054,15 @@ getgenv().Library = {
                                 Remove(Children, I);
                                 break;
                             end;
+                        end
+
+                        if Child:IsA('BasePart') then
+                            for I = #Parts, 1, -1 do
+                                if Parts[I] == Child then
+                                    Remove(Parts, I);
+                                    break;
+                                end
+                            end
                         end
                     end)
 
@@ -1121,6 +1147,7 @@ getgenv().Library = {
                     Data['RootPart'] = nil;
                     Data['Humanoid'] = nil;
                     Data['Children'] = nil;
+                    Data['Parts'] = nil;
                     Data['Alive'] = false;
                     Data['WalkActive'] = false;
                     Data['JumpActive'] = false;
@@ -1223,11 +1250,6 @@ getgenv().Library = {
                 end
                 return
             end
-
-            W = Floor(W)
-            H = Floor(H)
-            X = Floor(X)
-            Y = Floor(Y)
 
             if not Objects['TargetHolder'].Visible then
                 Objects['TargetHolder'].Visible = true
@@ -1441,11 +1463,15 @@ getgenv().Library = {
                         Objects['HealthBarText'].Visible = true
                     end
 
+                    if Data['LastHealthTextRatio'] ~= Ratio then
+                        Objects['HealthBarText'].Position = Dim2(1, -10, 1 - Ratio, 1)
+                        Data['LastHealthTextRatio'] = Ratio
+                    end
+
                     local FlooredHealth = Floor(Health)
 
                     if Data['LastHealthFloor'] ~= FlooredHealth then
                         Objects['HealthBarText'].Text = Format('%d', FlooredHealth)
-                        Objects['HealthBarText'].Position = Dim2(1, -10, 1 - Ratio, 1)
                         Data['LastHealthFloor'] = FlooredHealth
                     end
                 else
