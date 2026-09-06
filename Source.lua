@@ -18,7 +18,7 @@ end
 
 if string.find(executor, "choco") and (not getgenv().executed) then
     runSource(run_on_actor, get_deleted_actors)
-elseif string.find(executor, "volt") and (not getgenv().executed) then
+elseif string.find(executor, "madium") and (not getgenv().executed) then
     runSource(run_on_actor, getactors)
 elseif string.find(executor, "potassium") and (not getgenv().executed) then
     runSource(run_on_thread, getactorthreads)
